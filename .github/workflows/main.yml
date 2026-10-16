@@ -1,0 +1,21 @@
+name: CRM Project Checks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check:
+    name: Verify Repository
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Confirm workflow is running
+        run: echo "CRM GitHub Actions workflow executed successfully!"
