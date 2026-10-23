@@ -20,6 +20,20 @@ const customerSchema = new mongoose.Schema(
       trim: true,
     },
 
+    // Where the customer came from (CRM-F-022)
+    source: {
+      type: String,
+      enum: [
+        "Website",
+        "Social Media",
+        "Referral",
+        "Advertisement",
+        "Campaign",
+        "Other",
+      ],
+      default: "Other",
+    },
+
     status: {
       type: String,
       enum: ["Active", "Inactive"],

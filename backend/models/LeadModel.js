@@ -55,6 +55,18 @@ const leadSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+
+    // Reason recorded when a lead is marked as Lost (CRM-F-021)
+    lostReason: {
+      type: String,
+      trim: true,
+    },
+
+    // Customer created from (or linked to) this lead on conversion
+    convertedCustomer: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Customer",
+    },
   },
   {
     timestamps: true,

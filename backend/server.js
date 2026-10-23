@@ -43,21 +43,26 @@ app.get("/", (req, res) => {
   });
 });
 
-// Connect to MongoDB
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log("MongoDB connected successfully!");
+// Connect to MongoDB and start the server (only when run directly,
+// so automated tests can import the app without opening a port).
+if (require.main === module) {
+  mongoose
+    .connect(process.env.MONGO_URI)
+    .then(() => {
+      console.log("MongoDB connected successfully!");
 
-    app.listen(PORT, () => {
-      console.log(
-        `CRM Backend running on http://localhost:${PORT}`
+      app.listen(PORT, () => {
+        console.log(
+          `CRM Backend running on http://localhost:${PORT}`
+        );
+      });
+    })
+    .catch((error) => {
+      console.error(
+        "MongoDB connection failed:",
+        error.message
       );
     });
-  })
-  .catch((error) => {
-    console.error(
-      "MongoDB connection failed:",
-      error.message
-    );
-  });
+}
+
+module.exports = app;
