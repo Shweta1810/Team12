@@ -5,6 +5,7 @@ import {
   CheckCircle,
   IndianRupee,
   Package,
+  Pencil,
   Plus,
   ShoppingCart,
   X,
@@ -44,6 +45,7 @@ function Sales({ onBack }: SalesProps) {
   const [sales, setSales] = useState<Sale[]>([]);
 
   const [showModal, setShowModal] = useState(false);
+  const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -84,8 +86,6 @@ function Sales({ onBack }: SalesProps) {
 
       const customerData = await customerResponse.json();
       const salesData = await salesResponse.json();
-
-      // FIX: Support both customer API response formats
       if (customerResponse.ok) {
         const customerList = Array.isArray(customerData)
           ? customerData
@@ -100,8 +100,6 @@ function Sales({ onBack }: SalesProps) {
           customerData.message || "Unable to load customers."
         );
       }
-
-      // Support both sales API response formats
       if (salesResponse.ok) {
         const salesList = Array.isArray(salesData)
           ? salesData
@@ -137,12 +135,83 @@ function Sales({ onBack }: SalesProps) {
   }, [loadData]);
 
   const resetForm = () => {
+    setEditingSale(null);
     setCustomer("");
     setProductService("");
     setQuantity("1");
     setAmount("");
     setDate(new Date().toISOString().split("T")[0]);
     setPaymentStatus("Pending");
+  };
+
+  const openEditSale = (sale: Sale) => {
+    setEditingSale(sale);
+    setCustomer(sale.customer?._id || "");
+    setProductService(sale.productService);
+    setQuantity(String(sale.quantity));
+    setAmount(String(sale.amount));
+    setDate(new Date(sale.date).toISOString().split("T")[0]);
+    setPaymentStatus(sale.paymentStatus);
+    setError("");
+    setShowModal(true);
+  };
+
+  const handleSaveSale = async () => {
+    if (!productService.trim() || !quantity || !amount || !date) {
+      alert("Please fill in all required fields.");
+      return;
+    }
+
+    const quantityNumber = Number(quantity);
+    const amountNumber = Number(amount);
+
+    if (!Number.isInteger(quantityNumber) || quantityNumber < 1) {
+      alert("Quantity must be a positive whole number.");
+      return;
+    }
+
+    if (!Number.isFinite(amountNumber) || amountNumber < 0) {
+      alert("Please enter a valid amount.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const response = await fetch(
+        `http://localhost:5000/api/sales/${editingSale?._id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            productService: productService.trim(),
+            quantity: quantityNumber,
+            amount: amountNumber,
+            date,
+            paymentStatus,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.message || "Unable to update sale.");
+        return;
+      }
+
+      alert("Sale updated successfully.");
+      resetForm();
+      setShowModal(false);
+      await loadData();
+    } catch (error) {
+      console.error("Update sale error:", error);
+      alert("Unable to connect to the server.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCreateSale = async () => {
@@ -210,6 +279,14 @@ function Sales({ onBack }: SalesProps) {
     }
   };
 
+  const handleSubmitSale = async () => {
+    if (editingSale) {
+      await handleSaveSale();
+    } else {
+      await handleCreateSale();
+    }
+  };
+
   const totalSales = sales.length;
 
   const paidSales = sales.filter(
@@ -238,8 +315,7 @@ function Sales({ onBack }: SalesProps) {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200">
+<div className="bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 py-5">
           <button
             onClick={onBack}
@@ -270,17 +346,13 @@ function Sales({ onBack }: SalesProps) {
           </div>
         </div>
       </div>
-
-      {/* Main */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
+<div className="max-w-7xl mx-auto px-6 py-8">
         {error && (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {error}
           </div>
         )}
-
-        {/* Summary cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8">
+<div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8">
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -365,9 +437,7 @@ function Sales({ onBack }: SalesProps) {
             </div>
           </div>
         </div>
-
-        {/* Sales History */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+<div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-6 py-5 border-b border-slate-200">
             <h2 className="text-lg font-semibold text-slate-900">
               Sales History
@@ -425,6 +495,9 @@ function Sales({ onBack }: SalesProps) {
                     <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">
                       Payment
                     </th>
+                    <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
 
@@ -471,6 +544,16 @@ function Sales({ onBack }: SalesProps) {
                           {sale.paymentStatus}
                         </span>
                       </td>
+                      <td className="px-6 py-4">
+                        <button
+                          type="button"
+                          onClick={() => openEditSale(sale)}
+                          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                        >
+                          <Pencil size={15} />
+                          Edit
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -479,19 +562,19 @@ function Sales({ onBack }: SalesProps) {
           )}
         </div>
       </div>
-
-      {/* Record Sale Modal */}
-      {showModal && (
+{showModal && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">
-                  Record New Sale
+                  {editingSale ? "Edit Sale" : "Record New Sale"}
                 </h2>
 
                 <p className="text-sm text-slate-500 mt-1">
-                  Enter the details of the customer purchase.
+                  {editingSale
+                    ? "Update the sale details."
+                    : "Enter the details of the customer purchase."}
                 </p>
               </div>
 
@@ -507,18 +590,18 @@ function Sales({ onBack }: SalesProps) {
             </div>
 
             <div className="p-6 space-y-5">
-              {/* Customer */}
-              <div>
+<div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Customer *
                 </label>
 
                 <select
                   value={customer}
+                  disabled={Boolean(editingSale)}
                   onChange={(event) =>
                     setCustomer(event.target.value)
                   }
-                  className="w-full border border-slate-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                  className="w-full border border-slate-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300 disabled:bg-slate-100 disabled:text-slate-500"
                 >
                   <option value="">
                     Select customer
@@ -538,9 +621,7 @@ function Sales({ onBack }: SalesProps) {
                   </p>
                 )}
               </div>
-
-              {/* Product */}
-              <div>
+<div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Product / Service *
                 </label>
@@ -555,9 +636,7 @@ function Sales({ onBack }: SalesProps) {
                   className="w-full border border-slate-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
                 />
               </div>
-
-              {/* Quantity + Amount */}
-              <div className="grid grid-cols-2 gap-4">
+<div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
                     Quantity *
@@ -592,9 +671,7 @@ function Sales({ onBack }: SalesProps) {
                   />
                 </div>
               </div>
-
-              {/* Date */}
-              <div>
+<div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Sale Date *
                 </label>
@@ -608,9 +685,7 @@ function Sales({ onBack }: SalesProps) {
                   className="w-full border border-slate-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
                 />
               </div>
-
-              {/* Payment status */}
-              <div>
+<div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Payment Status *
                 </label>
@@ -632,9 +707,7 @@ function Sales({ onBack }: SalesProps) {
                   <option value="Cancelled">Cancelled</option>
                 </select>
               </div>
-
-              {/* Loyalty information */}
-              {paymentStatus === "Paid" &&
+{paymentStatus === "Paid" &&
                 Number(amount) > 0 && (
                   <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
                     <p className="text-sm font-medium text-emerald-800">
@@ -663,11 +736,15 @@ function Sales({ onBack }: SalesProps) {
                 </button>
 
                 <button
-                  onClick={() => void handleCreateSale()}
+                  onClick={() => void handleSubmitSale()}
                   disabled={saving}
                   className="px-5 py-3 rounded-xl bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 transition"
                 >
-                  {saving ? "Saving..." : "Record Sale"}
+                  {saving
+                    ? "Saving..."
+                    : editingSale
+                      ? "Save Changes"
+                      : "Record Sale"}
                 </button>
               </div>
             </div>
