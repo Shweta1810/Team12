@@ -252,4 +252,50 @@ router.put(
   }
 );
 
+/*
+ * Delete a follow-up
+ * Only the staff who created it or an Admin can delete.
+ */
+router.delete(
+  "/:id",
+  authenticateUser,
+  async (req, res) => {
+    try {
+      const followUp =
+        await FollowUp.findById(req.params.id);
+
+      if (!followUp) {
+        return res.status(404).json({
+          message: "Follow-up not found.",
+        });
+      }
+
+      if (
+        req.user.role !== "Admin" &&
+        followUp.staff.toString() !== req.user.userId
+      ) {
+        return res.status(403).json({
+          message:
+            "You are not authorized to delete this follow-up.",
+        });
+      }
+
+      await FollowUp.findByIdAndDelete(req.params.id);
+
+      res.json({
+        message: "Follow-up deleted successfully.",
+      });
+    } catch (error) {
+      console.error(
+        "Delete follow-up error:",
+        error
+      );
+
+      res.status(500).json({
+        message: "Server error. Please try again.",
+      });
+    }
+  }
+);
+
 module.exports = router;

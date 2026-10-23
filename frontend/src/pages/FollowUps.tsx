@@ -6,8 +6,17 @@ import {
   Clock,
   RotateCcw,
   Search,
+  Trash2,
   X,
 } from "lucide-react";
+
+const STATUS_FILTERS = [
+  "All",
+  "Scheduled",
+  "Overdue",
+  "Rescheduled",
+  "Completed",
+] as const;
 
 interface FollowUp {
   _id: string;
@@ -49,8 +58,11 @@ function FollowUps({ onBack }: FollowUpsProps) {
   const [notes, setNotes] = useState("");
 
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("All");
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   // Reschedule popup state
   const [rescheduleId, setRescheduleId] =
@@ -61,6 +73,10 @@ function FollowUps({ onBack }: FollowUpsProps) {
 
   const [rescheduleLoading, setRescheduleLoading] =
     useState(false);
+
+  /* current logged-in user */
+  const storedUser = sessionStorage.getItem("user");
+  const currentUser = storedUser ? JSON.parse(storedUser) : null;
 
   const token = localStorage.getItem("token");
 
@@ -336,18 +352,76 @@ function FollowUps({ onBack }: FollowUpsProps) {
     }
   };
 
-  const filteredFollowUps = followUps.filter(
-    (followUp) =>
-      followUp.customer.name
-        .toLowerCase()
-        .includes(search.toLowerCase()) ||
-      followUp.type
-        .toLowerCase()
-        .includes(search.toLowerCase()) ||
-      followUp.status
-        .toLowerCase()
-        .includes(search.toLowerCase())
-  );
+  const handleDelete = async (id: string) => {
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this follow-up? This cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    setDeleting(id);
+    setError("");
+
+    try {
+      const response = await fetch(
+        `http://localhost:5000/api/followups/${id}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(
+          data.message || "Failed to delete follow-up."
+        );
+        return;
+      }
+
+      setFollowUps((prev) =>
+        prev.filter((item) => item._id !== id)
+      );
+
+      setMessage("Follow-up deleted successfully.");
+
+      setTimeout(() => {
+        setMessage("");
+      }, 3000);
+    } catch (_err) {
+      setError("Unable to connect to the server.");
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  const canModify = (followUp: FollowUp) => {
+    if (!currentUser) return false;
+    if (currentUser.role === "Admin") return true;
+    return (
+      followUp.staff._id === currentUser.id ||
+      followUp.staff.email === currentUser.email
+    );
+  };
+
+  const filteredFollowUps = followUps.filter((followUp) => {
+    const searchText = search.toLowerCase();
+
+    const matchesSearch =
+      followUp.customer.name.toLowerCase().includes(searchText) ||
+      followUp.type.toLowerCase().includes(searchText) ||
+      followUp.status.toLowerCase().includes(searchText);
+
+    const matchesStatus =
+      statusFilter === "All" || followUp.status === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
 
   const scheduledCount = followUps.filter(
     (item) => item.status === "Scheduled"
@@ -573,40 +647,70 @@ function FollowUps({ onBack }: FollowUpsProps) {
           </form>
 
           {message && (
-            <p className="mt-4 text-sm font-medium text-blue-600">
+            <p className="mt-4 text-sm font-medium text-green-600">
               {message}
+            </p>
+          )}
+
+          {error && (
+            <p className="mt-4 text-sm font-medium text-red-600">
+              {error}
             </p>
           )}
         </div>
 
         {/* Follow-up History */}
         <div className="rounded-xl border bg-white shadow-sm">
-          <div className="flex flex-col gap-4 border-b p-6 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">
-                Follow-up History
-              </h2>
+          <div className="flex flex-col gap-4 border-b p-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Follow-up History
+                </h2>
 
-              <p className="mt-1 text-sm text-slate-500">
-                View and manage scheduled customer follow-ups.
-              </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {filteredFollowUps.length} follow-up{filteredFollowUps.length !== 1 ? "s" : ""} found
+                </p>
+              </div>
+
+              <div className="relative w-full md:w-72">
+                <Search
+                  size={18}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(event) =>
+                    setSearch(event.target.value)
+                  }
+                  placeholder="Search follow-ups..."
+                  className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-blue-500"
+                />
+              </div>
             </div>
 
-            <div className="relative w-full md:w-72">
-              <Search
-                size={18}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-
-              <input
-                type="text"
-                value={search}
-                onChange={(event) =>
-                  setSearch(event.target.value)
-                }
-                placeholder="Search follow-ups..."
-                className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-blue-500"
-              />
+            {/* Status filter tabs */}
+            <div className="flex flex-wrap gap-2">
+              {STATUS_FILTERS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+                    statusFilter === s
+                      ? "bg-blue-600 text-white"
+                      : "border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {s}
+                  {s !== "All" && (
+                    <span className="ml-1.5 text-xs opacity-75">
+                      ({followUps.filter((f) => f.status === s).length})
+                    </span>
+                  )}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -680,14 +784,11 @@ function FollowUps({ onBack }: FollowUpsProps) {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      {followUp.status !==
-                        "Completed" && (
+                      {followUp.status !== "Completed" && (
                         <button
                           type="button"
                           onClick={() =>
-                            completeFollowUp(
-                              followUp._id
-                            )
+                            completeFollowUp(followUp._id)
                           }
                           className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-700 transition hover:-translate-y-0.5 hover:bg-green-100 hover:shadow-sm"
                         >
@@ -696,8 +797,7 @@ function FollowUps({ onBack }: FollowUpsProps) {
                         </button>
                       )}
 
-                      {followUp.status !==
-                        "Completed" && (
+                      {followUp.status !== "Completed" && (
                         <button
                           type="button"
                           onClick={() =>
@@ -710,6 +810,21 @@ function FollowUps({ onBack }: FollowUpsProps) {
                         >
                           <RotateCcw size={16} />
                           Reschedule
+                        </button>
+                      )}
+
+                      {canModify(followUp) && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleDelete(followUp._id)
+                          }
+                          disabled={deleting === followUp._id}
+                          title="Delete follow-up"
+                          className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600 transition hover:-translate-y-0.5 hover:bg-red-100 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Trash2 size={16} />
+                          {deleting === followUp._id ? "Deleting..." : "Delete"}
                         </button>
                       )}
                     </div>
