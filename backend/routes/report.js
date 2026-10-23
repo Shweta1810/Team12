@@ -1,3 +1,4 @@
+
 const express = require("express");
 
 const Lead = require("../models/LeadModel");
@@ -47,13 +48,7 @@ router.get("/", authenticateUser, async (req, res) => {
       RetentionActivity.countDocuments(staffFilter),
 
       LoyaltyAccount.countDocuments(
-        isAdmin
-          ? {}
-          : {
-              customer: {
-                $in: customerIds,
-              },
-            }
+        isAdmin ? {} : { customer: { $in: customerIds } }
       ),
 
       Sale.countDocuments(saleFilter),
@@ -67,32 +62,41 @@ router.get("/", authenticateUser, async (req, res) => {
       }),
     ]);
 
-    const salesSummary = await Sale.aggregate([
-      { $match: saleFilter },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: {
-            $sum: {
-              $cond: [
-                { $eq: ["$paymentStatus", "Paid"] },
-                "$amount",
-                0,
-              ],
-            },
-          },
-          totalAmount: {
-            $sum: "$amount",
-          },
-        },
-      },
-    ]);
+    // Fetch sales using the same filter as the sales summary.
+    const salesRecords = await Sale.find(saleFilter)
+      .select("customer salesperson productService quantity amount date paymentStatus")
+      .lean();
 
-    const revenue = salesSummary[0] || {
-      totalRevenue: 0,
-      totalAmount: 0,
+    // Calculate revenue from paid sales only.
+    const totalRevenue = salesRecords.reduce((sum, sale) => {
+      if (sale.paymentStatus === "Paid") {
+        return sum + (Number(sale.amount) || 0);
+      }
+
+      return sum;
+    }, 0);
+
+    // Calculate the total amount of all matching sales.
+    const totalAmount = salesRecords.reduce((sum, sale) => {
+      return sum + (Number(sale.amount) || 0);
+    }, 0);
+
+    const revenue = {
+      totalRevenue,
+      totalAmount,
     };
 
+    // Debugging information: visible in the backend terminal.
+    console.log("\n========== SALES REPORT DEBUG ==========");
+    console.log("Logged-in user ID:", String(userId));
+    console.log("Logged-in role:", role);
+    console.log("Sale filter:", JSON.stringify(saleFilter));
+    console.log("Matching sales count:", salesRecords.length);
+    console.log("Matching sales:", JSON.stringify(salesRecords, null, 2));
+    console.log("Calculated revenue:", revenue);
+    console.log("========================================\n");
+
+    // Sales grouped by payment status.
     const saleStatusReport = await Sale.aggregate([
       { $match: saleFilter },
       {
@@ -110,11 +114,12 @@ router.get("/", authenticateUser, async (req, res) => {
     };
 
     saleStatusReport.forEach((item) => {
-      if (item._id in salesByStatus) {
+      if (Object.prototype.hasOwnProperty.call(salesByStatus, item._id)) {
         salesByStatus[item._id] = item.count;
       }
     });
 
+    // Leads grouped by status.
     const leadStatusReport = await Lead.aggregate([
       { $match: leadFilter },
       {
@@ -134,11 +139,12 @@ router.get("/", authenticateUser, async (req, res) => {
     };
 
     leadStatusReport.forEach((item) => {
-      if (item._id in leadsByStatus) {
+      if (Object.prototype.hasOwnProperty.call(leadsByStatus, item._id)) {
         leadsByStatus[item._id] = item.count;
       }
     });
 
+    // Feedback grouped by status.
     const feedbackStatusReport = await Feedback.aggregate([
       { $match: staffFilter },
       {
@@ -157,11 +163,14 @@ router.get("/", authenticateUser, async (req, res) => {
     };
 
     feedbackStatusReport.forEach((item) => {
-      if (item._id in feedbackByStatus) {
+      if (
+        Object.prototype.hasOwnProperty.call(feedbackByStatus, item._id)
+      ) {
         feedbackByStatus[item._id] = item.count;
       }
     });
 
+    // Follow-ups grouped by status.
     const followUpStatusReport = await FollowUp.aggregate([
       { $match: staffFilter },
       {
@@ -180,21 +189,23 @@ router.get("/", authenticateUser, async (req, res) => {
     };
 
     followUpStatusReport.forEach((item) => {
-      if (item._id in followUpsByStatus) {
+      if (
+        Object.prototype.hasOwnProperty.call(followUpsByStatus, item._id)
+      ) {
         followUpsByStatus[item._id] = item.count;
       }
     });
 
-    const retentionStatusReport =
-      await RetentionActivity.aggregate([
-        { $match: staffFilter },
-        {
-          $group: {
-            _id: "$status",
-            count: { $sum: 1 },
-          },
+    // Retention activities grouped by status.
+    const retentionStatusReport = await RetentionActivity.aggregate([
+      { $match: staffFilter },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
         },
-      ]);
+      },
+    ]);
 
     const retentionByStatus = {
       Planned: 0,
@@ -203,42 +214,39 @@ router.get("/", authenticateUser, async (req, res) => {
     };
 
     retentionStatusReport.forEach((item) => {
-      if (item._id in retentionByStatus) {
+      if (
+        Object.prototype.hasOwnProperty.call(retentionByStatus, item._id)
+      ) {
         retentionByStatus[item._id] = item.count;
       }
     });
 
+    // Restrict loyalty data to the logged-in staff member's customers.
     const loyaltyMatch = isAdmin
       ? {}
-      : {
-          customer: {
-            $in: customerIds,
-          },
-        };
+      : { customer: { $in: customerIds } };
 
-    const loyaltySummary =
-      await LoyaltyAccount.aggregate([
-        { $match: loyaltyMatch },
-        {
-          $group: {
-            _id: null,
-            totalPoints: { $sum: "$points" },
-            totalEarned: { $sum: "$totalEarned" },
-            totalRedeemed: { $sum: "$totalRedeemed" },
-          },
+    const loyaltySummary = await LoyaltyAccount.aggregate([
+      { $match: loyaltyMatch },
+      {
+        $group: {
+          _id: null,
+          totalPoints: { $sum: "$points" },
+          totalEarned: { $sum: "$totalEarned" },
+          totalRedeemed: { $sum: "$totalRedeemed" },
         },
-      ]);
+      },
+    ]);
 
-    const loyaltyTierReport =
-      await LoyaltyAccount.aggregate([
-        { $match: loyaltyMatch },
-        {
-          $group: {
-            _id: "$tier",
-            count: { $sum: 1 },
-          },
+    const loyaltyTierReport = await LoyaltyAccount.aggregate([
+      { $match: loyaltyMatch },
+      {
+        $group: {
+          _id: "$tier",
+          count: { $sum: 1 },
         },
-      ]);
+      },
+    ]);
 
     const loyaltyByTier = {
       Bronze: 0,
@@ -248,7 +256,7 @@ router.get("/", authenticateUser, async (req, res) => {
     };
 
     loyaltyTierReport.forEach((item) => {
-      if (item._id in loyaltyByTier) {
+      if (Object.prototype.hasOwnProperty.call(loyaltyByTier, item._id)) {
         loyaltyByTier[item._id] = item.count;
       }
     });
@@ -259,7 +267,8 @@ router.get("/", authenticateUser, async (req, res) => {
       totalRedeemed: 0,
     };
 
-    res.json({
+    // Send the report using the existing response structure.
+    return res.json({
       message: "Reports generated successfully.",
 
       summary: {
@@ -310,10 +319,11 @@ router.get("/", authenticateUser, async (req, res) => {
   } catch (error) {
     console.error("Generate report error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Server error. Unable to generate report.",
     });
   }
 });
 
 module.exports = router;
+
