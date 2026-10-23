@@ -94,13 +94,31 @@ router.post("/", authenticateUser, async (req, res) => {
 
 /*
  * Get interactions
+ * Supports optional query param: ?type=Call|Email|Meeting|Chat|Other
  */
 router.get("/", authenticateUser, async (req, res) => {
   try {
+    const { type } = req.query;
+
+    /*
+     * Build the filter object.
+     * If a type query param is provided, filter by it.
+     */
+    const filter = {};
+
+    if (
+      type &&
+      ["Call", "Email", "Meeting", "Chat", "Other"].includes(
+        type
+      )
+    ) {
+      filter.type = type;
+    }
+
     let interactions;
 
     if (req.user.role === "Admin") {
-      interactions = await Interaction.find()
+      interactions = await Interaction.find(filter)
         .populate(
           "customer",
           "name email phone status"
@@ -112,6 +130,7 @@ router.get("/", authenticateUser, async (req, res) => {
         .sort({ date: -1 });
     } else {
       interactions = await Interaction.find({
+        ...filter,
         staff: req.user.userId,
       })
         .populate(
@@ -140,5 +159,125 @@ router.get("/", authenticateUser, async (req, res) => {
     });
   }
 });
+
+/*
+ * Update an interaction (edit type, date, notes)
+ * Only the staff who created it or an Admin can edit.
+ */
+router.put(
+  "/:id",
+  authenticateUser,
+  async (req, res) => {
+    try {
+      const interaction =
+        await Interaction.findById(req.params.id);
+
+      if (!interaction) {
+        return res.status(404).json({
+          message: "Interaction not found.",
+        });
+      }
+
+      if (
+        req.user.role !== "Admin" &&
+        interaction.staff.toString() !== req.user.userId
+      ) {
+        return res.status(403).json({
+          message:
+            "You are not authorized to edit this interaction.",
+        });
+      }
+
+      const { type, date, notes } = req.body;
+
+      if (type) {
+        interaction.type = type;
+      }
+
+      if (date) {
+        interaction.date = date;
+      }
+
+      if (notes !== undefined) {
+        interaction.notes = notes.trim();
+      }
+
+      await interaction.save();
+
+      const updatedInteraction =
+        await Interaction.findById(
+          interaction._id
+        )
+          .populate(
+            "customer",
+            "name email phone status"
+          )
+          .populate(
+            "staff",
+            "name email role"
+          );
+
+      res.json({
+        message: "Interaction updated successfully.",
+        interaction: updatedInteraction,
+      });
+    } catch (error) {
+      console.error(
+        "Update interaction error:",
+        error
+      );
+
+      res.status(500).json({
+        message: "Server error. Please try again.",
+      });
+    }
+  }
+);
+
+/*
+ * Delete an interaction
+ * Only the staff who created it or an Admin can delete.
+ */
+router.delete(
+  "/:id",
+  authenticateUser,
+  async (req, res) => {
+    try {
+      const interaction =
+        await Interaction.findById(req.params.id);
+
+      if (!interaction) {
+        return res.status(404).json({
+          message: "Interaction not found.",
+        });
+      }
+
+      if (
+        req.user.role !== "Admin" &&
+        interaction.staff.toString() !== req.user.userId
+      ) {
+        return res.status(403).json({
+          message:
+            "You are not authorized to delete this interaction.",
+        });
+      }
+
+      await Interaction.findByIdAndDelete(req.params.id);
+
+      res.json({
+        message: "Interaction deleted successfully.",
+      });
+    } catch (error) {
+      console.error(
+        "Delete interaction error:",
+        error
+      );
+
+      res.status(500).json({
+        message: "Server error. Please try again.",
+      });
+    }
+  }
+);
 
 module.exports = router;
