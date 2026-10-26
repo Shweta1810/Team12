@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  ArrowLeft,
-  HeartHandshake,
-  CheckCircle,
-  Clock,
-  XCircle,
-  Plus,
-} from "lucide-react";
+type IconProps = { size?: number; className?: string };
+const ArrowLeft = ({ size = 22, className }: IconProps) => <span aria-hidden="true" className={className} style={{ fontSize: size, lineHeight: 1 }}>←</span>;
+const HeartHandshake = ({ size = 22, className }: IconProps) => <span aria-hidden="true" className={className} style={{ fontSize: size, lineHeight: 1 }}>♡</span>;
+const CheckCircle = ({ size = 22, className }: IconProps) => <span aria-hidden="true" className={className} style={{ fontSize: size, lineHeight: 1 }}>✓</span>;
+const Clock = ({ size = 22, className }: IconProps) => <span aria-hidden="true" className={className} style={{ fontSize: size, lineHeight: 1 }}>◷</span>;
+const XCircle = ({ size = 22, className }: IconProps) => <span aria-hidden="true" className={className} style={{ fontSize: size, lineHeight: 1 }}>×</span>;
+const Plus = ({ size = 22, className }: IconProps) => <span aria-hidden="true" className={className} style={{ fontSize: size, lineHeight: 1 }}>+</span>;
+
 
 interface Customer {
   _id: string;
@@ -64,7 +64,8 @@ function Retention({ onBack }: RetentionProps) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const token = localStorage.getItem("token");
+  const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
+  const token = sessionStorage.getItem("crm_token");
 
   /*
    * Fetch customers
@@ -72,7 +73,7 @@ function Retention({ onBack }: RetentionProps) {
   const fetchCustomers = useCallback(async () => {
     try {
       const response = await fetch(
-        "http://localhost:5000/api/customers",
+        `${API}/api/customers`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -99,7 +100,7 @@ function Retention({ onBack }: RetentionProps) {
   const fetchActivities = useCallback(async () => {
     try {
       const response = await fetch(
-        "http://localhost:5000/api/retention",
+        `${API}/api/retention`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -153,7 +154,7 @@ function Retention({ onBack }: RetentionProps) {
       setSubmitting(true);
 
       const response = await fetch(
-        "http://localhost:5000/api/retention",
+        `${API}/api/retention`,
         {
           method: "POST",
           headers: {
@@ -212,7 +213,7 @@ function Retention({ onBack }: RetentionProps) {
   ) => {
     try {
       const response = await fetch(
-        `http://localhost:5000/api/retention/${id}/status`,
+        `${API}/api/retention/${id}/status`,
         {
           method: "PUT",
           headers: {

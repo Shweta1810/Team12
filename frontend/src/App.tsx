@@ -1,4 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
+import Feedback from './pages/Feedback';
+import Retention from './pages/Retention';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 type User = { id: string; name: string; email: string; role: 'Admin' | 'Sales Staff' | 'Support Staff'; isActive?: boolean };
@@ -20,6 +22,7 @@ export default function App() {
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<User['role']>('Sales Staff');
   const [notice, setNotice] = useState('');
+  const [activePage, setActivePage] = useState<'dashboard' | 'feedback' | 'retention'>('dashboard');
 
   async function api(path: string, options: RequestInit = {}): Promise<ApiResponse> {
     const res = await fetch(`${API}${path}`, {
@@ -86,7 +89,7 @@ export default function App() {
   async function logout() {
     let serverLogoutFailed = false;
     try { await api('/api/auth/logout', { method: 'POST' }); } catch { serverLogoutFailed = true; }
-    sessionStorage.removeItem('crm_token'); setToken(''); setUser(null); setUsers([]); setNotice('You have logged out.');
+    sessionStorage.removeItem('crm_token'); setToken(''); setUser(null); setUsers([]); setActivePage('dashboard'); setNotice('You have logged out.');
     if (serverLogoutFailed) setError('Signed out in this browser, but the server could not invalidate the token. It remains valid until it expires.');
   }
 
@@ -121,10 +124,14 @@ export default function App() {
     <p className="small muted">Accounts are provisioned by an administrator. Self-registration is disabled.</p>
   </section></main>;
 
+  if (activePage === 'feedback') return <Feedback onBack={() => setActivePage('dashboard')} />;
+  if (activePage === 'retention') return <Retention onBack={() => setActivePage('dashboard')} />;
+
   return <main className="shell">
     <header className="topbar"><div><p className="eyebrow">TEAM12 CRM</p><h1>Dashboard</h1></div><div className="profile"><span>{user.name}<small>{user.role}</small></span><button className="secondary" onClick={logout}>Log out</button></div></header>
     {error && <p className="alert" role="alert">{error}</p>}{notice && <p className="success" role="status">{notice}</p>}
     <section className="panel welcome"><div><p className="eyebrow">SIGNED IN</p><h2>Hello, {user.name}</h2><p className="muted">Your role controls which CRM features you can access.</p></div><span className="role">{user.role}</span></section>
+    <section className="panel"><h2>Customer engagement</h2><p className="muted">Manage feedback, complaints and retention activities for your assigned customers.</p><div className="create-form"><button type="button" onClick={() => setActivePage('feedback')}>Feedback management</button><button type="button" onClick={() => setActivePage('retention')}>Retention management</button></div></section>
     {user.role === 'Admin' ? <section className="panel">
       <h2>Staff account management</h2><p className="muted">Create accounts, change roles, and deactivate staff. Only administrators can access this screen.</p>
       <form className="create-form" onSubmit={createUser}>

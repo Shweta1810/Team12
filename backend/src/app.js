@@ -5,6 +5,9 @@ import rateLimit from 'express-rate-limit';
 import mongoose from 'mongoose';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
+import customerRoutes from './routes/customers.js';
+import feedbackRoutes from './routes/feedback.js';
+import retentionRoutes from './routes/retention.js';
 import { notFound, errorHandler } from './middleware/errors.js';
 
 const app = express();
@@ -28,6 +31,9 @@ app.get('/api/health', (_req, res) => {
 });
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/customers', customerRoutes);
+app.use('/api/feedback', feedbackRoutes);
+app.use('/api/retention', retentionRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
