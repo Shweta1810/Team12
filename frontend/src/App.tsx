@@ -18,6 +18,7 @@ export default function App() {
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [passwords, setPasswords] = useState<Record<string, string>>({});
   const [newRole, setNewRole] = useState<User['role']>('Sales Staff');
   const [notice, setNotice] = useState('');
 
@@ -99,11 +100,12 @@ export default function App() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not create user'); }
   }
 
-  async function updateUser(id: string, changes: Partial<ListedUser>) {
+  async function updateUser(id: string, changes: Partial<ListedUser> & { password?: string }) {
     setError(''); setNotice('');
     try {
       await api(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(changes) });
       const d = await api('/api/users'); setUsers(d.users || []); setNotice('Account updated.');
+      if (changes.password !== undefined) setPasswords(current => ({ ...current, [id]: '' }));
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not update user'); }
   }
 
@@ -135,7 +137,7 @@ export default function App() {
         <button>Create account</button>
       </form>
       <h3>Existing accounts</h3><div className="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>
-      {users.map(u => <tr key={u.id}><td>{u.name}</td><td>{u.email}</td><td><select aria-label={`Role for ${u.email}`} value={u.role} onChange={e => updateUser(u.id, { role: e.target.value as User['role'] })}><option>Admin</option><option>Sales Staff</option><option>Support Staff</option></select></td><td>{u.isActive ? 'Active' : 'Inactive'}</td><td><button className="secondary" disabled={u.id === user.id} onClick={() => updateUser(u.id, { isActive: !u.isActive })}>{u.isActive ? 'Deactivate' : 'Activate'}</button></td></tr>)}
+      {users.map(u => <tr key={u.id}><td><input aria-label={`Name for ${u.email}`} value={u.name} onChange={e => setUsers(current => current.map(account => account.id === u.id ? { ...account, name: e.target.value } : account))} /></td><td><input aria-label={`Email for ${u.name}`} type="email" value={u.email} onChange={e => setUsers(current => current.map(account => account.id === u.id ? { ...account, email: e.target.value } : account))} /></td><td><select aria-label={`Role for ${u.email}`} value={u.role} onChange={e => updateUser(u.id, { role: e.target.value as User['role'] })}><option>Admin</option><option>Sales Staff</option><option>Support Staff</option></select></td><td>{u.isActive ? 'Active' : 'Inactive'}</td><td><button className="secondary" onClick={() => updateUser(u.id, { name: u.name, email: u.email })}>Save details</button> <button className="secondary" disabled={!passwords[u.id]} onClick={() => updateUser(u.id, { password: passwords[u.id] })}>Reset password</button> <button className="secondary" disabled={u.id === user.id} onClick={() => updateUser(u.id, { isActive: !u.isActive })}>{u.isActive ? 'Deactivate' : 'Activate'}</button><input aria-label={`New password for ${u.email}`} type="password" minLength={12} maxLength={72} value={passwords[u.id] || ''} onChange={e => setPasswords(current => ({ ...current, [u.id]: e.target.value }))} /></td></tr>)}
       {loadingUsers ? <tr><td colSpan={5}>Loading accounts…</td></tr> : users.length === 0 && <tr><td colSpan={5}>No staff accounts found.</td></tr>}
       </tbody></table></div>
     </section> : <section className="panel"><h2>Your workspace</h2><p className="muted">{user.role === 'Sales Staff' ? 'Sales staff can work with assigned leads, customer records, conversions and follow-ups as enabled by the CRM API.' : 'Support staff can work with customer history, interactions, feedback, follow-ups and retention as enabled by the CRM API.'}</p><p className="small muted">Other CRM modules will appear as the team implements them.</p></section>}
