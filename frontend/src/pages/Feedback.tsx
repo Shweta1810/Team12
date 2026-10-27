@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  ArrowLeft,
-  MessageSquareText,
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  Plus,
-} from "lucide-react";
+type IconProps = { size?: number; className?: string };
+const ArrowLeft = ({ size = 22, className }: IconProps) => <span aria-hidden="true" className={className} style={{ fontSize: size, lineHeight: 1 }}>←</span>;
+const MessageSquareText = ({ size = 22, className }: IconProps) => <span aria-hidden="true" className={className} style={{ fontSize: size, lineHeight: 1 }}>▤</span>;
+const AlertCircle = ({ size = 22, className }: IconProps) => <span aria-hidden="true" className={className} style={{ fontSize: size, lineHeight: 1 }}>!</span>;
+const CheckCircle = ({ size = 22, className }: IconProps) => <span aria-hidden="true" className={className} style={{ fontSize: size, lineHeight: 1 }}>✓</span>;
+const Clock = ({ size = 22, className }: IconProps) => <span aria-hidden="true" className={className} style={{ fontSize: size, lineHeight: 1 }}>◷</span>;
+const Plus = ({ size = 22, className }: IconProps) => <span aria-hidden="true" className={className} style={{ fontSize: size, lineHeight: 1 }}>+</span>;
+
 
 interface Customer {
   _id: string;
@@ -56,7 +56,8 @@ function Feedback({ onBack }: FeedbackProps) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const token = localStorage.getItem("token");
+  const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
+  const token = sessionStorage.getItem("crm_token");
 
   /*
    * Fetch customers
@@ -64,7 +65,7 @@ function Feedback({ onBack }: FeedbackProps) {
   const fetchCustomers = useCallback(async () => {
     try {
       const response = await fetch(
-        "http://localhost:5000/api/customers",
+        `${API}/api/customers`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -91,7 +92,7 @@ function Feedback({ onBack }: FeedbackProps) {
   const fetchFeedback = useCallback(async () => {
     try {
       const response = await fetch(
-        "http://localhost:5000/api/feedback",
+        `${API}/api/feedback`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -147,7 +148,7 @@ function Feedback({ onBack }: FeedbackProps) {
       setSubmitting(true);
 
       const response = await fetch(
-        "http://localhost:5000/api/feedback",
+        `${API}/api/feedback`,
         {
           method: "POST",
           headers: {
@@ -206,7 +207,7 @@ function Feedback({ onBack }: FeedbackProps) {
   ) => {
     try {
       const response = await fetch(
-        `http://localhost:5000/api/feedback/${id}/status`,
+        `${API}/api/feedback/${id}/status`,
         {
           method: "PUT",
           headers: {
