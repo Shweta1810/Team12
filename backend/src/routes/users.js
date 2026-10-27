@@ -20,14 +20,15 @@ router.get('/', async (_req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const { name, email, password, role } = req.body ?? {};
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
     if (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 100 ||
-        typeof email !== 'string' || !validEmail.test(email) ||
+        !validEmail.test(normalizedEmail) || normalizedEmail.length > 254 ||
         typeof password !== 'string' || password.length < 12 || Buffer.byteLength(password, 'utf8') > 72 ||
         !roles.includes(role)) {
       return res.status(400).json({ message: 'Provide a name, valid email, password (12+ characters and at most 72 UTF-8 bytes), and valid role' });
     }
     const passwordHash = await bcrypt.hash(password, 12);
-    const user = await User.create({ name: name.trim(), email: email.trim().toLowerCase(), passwordHash, role });
+    const user = await User.create({ name: name.trim(), email: normalizedEmail, passwordHash, role });
     await audit('USER_CREATED', req.user._id, user._id, { role });
     res.status(201).json({ user: { id: user._id, name: user.name, email: user.email, role: user.role, isActive: user.isActive } });
   } catch (err) { next(err); }
@@ -36,7 +37,7 @@ router.post('/', async (req, res, next) => {
 router.patch('/:id', async (req, res, next) => {
   try {
     const updates = {};
-    const allowedFields = ['name', 'role', 'isActive'];
+    const allowedFields = ['name', 'email', 'password', 'role', 'isActive'];
     if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) ||
         Object.keys(req.body).some((field) => !allowedFields.includes(field))) {
       return res.status(400).json({ message: 'Invalid account changes' });
@@ -45,6 +46,19 @@ router.patch('/:id', async (req, res, next) => {
       if (typeof req.body.name !== 'string' || req.body.name.trim().length < 2 || req.body.name.trim().length > 100)
         return res.status(400).json({ message: 'Invalid name' });
       updates.name = req.body.name.trim();
+    }
+    if (req.body?.email !== undefined) {
+      if (typeof req.body.email !== 'string') return res.status(400).json({ message: 'Invalid email' });
+      const email = req.body.email.trim().toLowerCase();
+      if (!validEmail.test(email) || email.length > 254) return res.status(400).json({ message: 'Invalid email' });
+      updates.email = email;
+    }
+    if (req.body?.password !== undefined) {
+      if (typeof req.body.password !== 'string' || req.body.password.length < 12 ||
+          Buffer.byteLength(req.body.password, 'utf8') > 72) {
+        return res.status(400).json({ message: 'Password must be 12+ characters and at most 72 UTF-8 bytes' });
+      }
+      updates.passwordHash = await bcrypt.hash(req.body.password, 12);
     }
     if (req.body?.role !== undefined) {
       if (!roles.includes(req.body.role)) return res.status(400).json({ message: 'Invalid role' });
@@ -63,14 +77,15 @@ router.patch('/:id', async (req, res, next) => {
       }
     }
     if (!Object.keys(updates).length) return res.status(400).json({ message: 'No valid changes provided' });
-    const invalidateTokens = updates.isActive === false || updates.role !== undefined;
+    const invalidateTokens = updates.isActive === false || updates.role !== undefined || updates.passwordHash !== undefined;
     const user = await User.findByIdAndUpdate(
       req.params.id,
       { $set: updates, ...(invalidateTokens ? { $inc: { tokenVersion: 1 } } : {}) },
       { new: true, runValidators: true }
     ).select('name email role isActive');
     if (!user) return res.status(404).json({ message: 'User not found' });
-    await audit('USER_UPDATED', req.user._id, user._id, { changedFields: Object.keys(updates) });
+    const changedFields = Object.keys(updates).map((field) => field === 'passwordHash' ? 'password' : field);
+    await audit('USER_UPDATED', req.user._id, user._id, { changedFields });
     res.json({ user: { id: user._id.toString(), name: user.name, email: user.email, role: user.role, isActive: user.isActive } });
   } catch (err) { next(err); }
 });
