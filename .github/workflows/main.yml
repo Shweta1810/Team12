@@ -9,13 +9,52 @@ on:
       - main
 
 jobs:
-  check:
-    name: Verify Repository
+  frontend-check:
+    name: Build Frontend
     runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: CRM/frontend
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Confirm workflow is running
-        run: echo "CRM GitHub Actions workflow executed successfully!"
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: CRM/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+  backend-check:
+    name: Check Backend
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: CRM/backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: CRM/backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Check backend syntax
+        run: node --check server.js
