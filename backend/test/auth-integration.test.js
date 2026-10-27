@@ -43,10 +43,10 @@ test('authentication and account-management API integration', {
     passwordHash: await bcrypt.hash('Integration-pass-123', 12),
     role
   });
-  const signIn = async (email) => {
+  const signIn = async (email, password = 'Integration-pass-123') => {
     const response = await request('/api/auth/login', {
       method: 'POST',
-      body: { email, password: 'Integration-pass-123' }
+      body: { email, password }
     });
     assert.equal(response.status, 200);
     return (await response.json()).token;
@@ -95,7 +95,10 @@ test('authentication and account-management API integration', {
   const currentUser = await request('/api/auth/me', { token: salesToken });
   assert.equal(currentUser.status, 200);
   assert.equal((await currentUser.json()).user.role, 'Sales Staff');
+  assert.equal((await request('/api/auth/me', { token: adminToken })).status, 200);
+  assert.equal((await request('/api/auth/me', { token: supportToken })).status, 200);
   assert.equal((await request('/api/auth/me')).status, 401);
+  assert.equal((await request('/api/auth/me', { token: 'not-a-token' })).status, 401);
   const forgedToken = jwt.sign({ sub: admin._id.toString(), ver: 0 }, 'wrong-secret', { issuer: 'team12-crm' });
   assert.equal((await request('/api/auth/me', { token: forgedToken })).status, 401);
   const expiredToken = jwt.sign({ sub: admin._id.toString(), ver: 0 }, process.env.JWT_SECRET, {
@@ -110,11 +113,28 @@ test('authentication and account-management API integration', {
 
   assert.equal((await request('/api/users', { token: salesToken })).status, 403);
   assert.equal((await request('/api/users', { token: supportToken })).status, 403);
+  assert.equal((await request('/api/users')).status, 401);
+  assert.equal((await request('/api/users', {
+    method: 'POST',
+    token: salesToken,
+    body: { name: 'Unauthorized', email: 'unauthorized@test.example', password: 'Valid-password-123', role: 'Admin' }
+  })).status, 403);
   const userList = await request('/api/users', { token: adminToken });
   assert.equal(userList.status, 200);
   const listedUsers = (await userList.json()).users;
   assert.ok(listedUsers.every((user) => user.id && !('_id' in user) && !('passwordHash' in user)));
+  assert.ok(listedUsers.every((user) => !('password' in user)));
 
+  assert.equal((await request('/api/users', {
+    method: 'POST',
+    token: adminToken,
+    body: {}
+  })).status, 400);
+  assert.equal((await request('/api/users', {
+    method: 'POST',
+    token: adminToken,
+    body: { name: 'A', email: 'new@test.example', password: 'Valid-password-123', role: 'Sales Staff' }
+  })).status, 400);
   const shortPassword = await request('/api/users', {
     method: 'POST',
     token: adminToken,
@@ -136,11 +156,14 @@ test('authentication and account-management API integration', {
   const created = await request('/api/users', {
     method: 'POST',
     token: adminToken,
-    body: { name: 'New Staff', email: 'new@test.example', password: 'Valid-password-123', role: 'Sales Staff' }
+    body: { name: 'New Staff', email: ' NEW@test.example ', password: 'Valid-password-123', role: 'Sales Staff' }
   });
   assert.equal(created.status, 201);
   const createdUser = (await created.json()).user;
   assert.ok(createdUser.id);
+  assert.equal(createdUser.email, 'new@test.example');
+  assert.equal('password' in createdUser, false);
+  assert.equal('passwordHash' in createdUser, false);
   assert.equal((await User.findById(createdUser.id).select('+passwordHash')).passwordHash === 'Valid-password-123', false);
   assert.equal((await request('/api/users', {
     method: 'POST',
@@ -148,6 +171,31 @@ test('authentication and account-management API integration', {
     body: { name: 'Duplicate', email: 'new@test.example', password: 'Valid-password-123', role: 'Sales Staff' }
   })).status, 409);
 
+  assert.equal((await request(`/api/users/${sales.id}`, {
+    method: 'PATCH',
+    token: adminToken,
+    body: { email: 'ADMIN@test.example' }
+  })).status, 409);
+  assert.equal((await request('/api/users/not-an-id', {
+    method: 'PATCH',
+    token: adminToken,
+    body: { name: 'Updated Staff' }
+  })).status, 400);
+  assert.equal((await request(`/api/users/${sales.id}`, {
+    method: 'PATCH',
+    token: adminToken,
+    body: { email: 'not-an-email' }
+  })).status, 400);
+  assert.equal((await request(`/api/users/${sales.id}`, {
+    method: 'PATCH',
+    token: adminToken,
+    body: { password: 'short' }
+  })).status, 400);
+  assert.equal((await request(`/api/users/${new mongoose.Types.ObjectId()}`, {
+    method: 'PATCH',
+    token: adminToken,
+    body: { name: 'Updated Staff' }
+  })).status, 404);
   assert.equal((await request(`/api/users/${admin.id}`, {
     method: 'PATCH',
     token: adminToken,
@@ -169,6 +217,33 @@ test('authentication and account-management API integration', {
     body: { role: 'Admin' }
   })).status, 403);
 
+  const updatedDetails = await request(`/api/users/${sales.id}`, {
+    method: 'PATCH',
+    token: adminToken,
+    body: { name: 'Updated Sales', email: ' SALES.UPDATED@test.example ' }
+  });
+  assert.equal(updatedDetails.status, 200);
+  const updatedSales = (await updatedDetails.json()).user;
+  assert.equal(updatedSales.name, 'Updated Sales');
+  assert.equal(updatedSales.email, 'sales.updated@test.example');
+  assert.equal('passwordHash' in updatedSales, false);
+  sales.email = updatedSales.email;
+
+  const passwordUpdate = await request(`/api/users/${sales.id}`, {
+    method: 'PATCH',
+    token: adminToken,
+    body: { password: 'Updated-password-123' }
+  });
+  assert.equal(passwordUpdate.status, 200);
+  const passwordUpdatedUser = (await passwordUpdate.json()).user;
+  assert.equal('password' in passwordUpdatedUser, false);
+  assert.equal('passwordHash' in passwordUpdatedUser, false);
+  assert.equal((await request('/api/auth/me', { token: salesToken })).status, 401);
+  const updatedPasswordUser = await User.findById(sales.id).select('+passwordHash');
+  assert.notEqual(updatedPasswordUser.passwordHash, 'Updated-password-123');
+  assert.equal(await bcrypt.compare('Updated-password-123', updatedPasswordUser.passwordHash), true);
+  const updatedSalesToken = await signIn(sales.email, 'Updated-password-123');
+
   const updated = await request(`/api/users/${sales.id}`, {
     method: 'PATCH',
     token: adminToken,
@@ -176,9 +251,9 @@ test('authentication and account-management API integration', {
   });
   assert.equal(updated.status, 200);
   assert.equal((await updated.json()).user.role, 'Support Staff');
-  assert.equal((await request('/api/auth/me', { token: salesToken })).status, 401);
+  assert.equal((await request('/api/auth/me', { token: updatedSalesToken })).status, 401);
 
-  const reactivatedToken = await signIn(sales.email);
+  const reactivatedToken = await signIn(sales.email, 'Updated-password-123');
   assert.equal((await request(`/api/users/${sales.id}`, {
     method: 'PATCH',
     token: adminToken,
@@ -187,7 +262,7 @@ test('authentication and account-management API integration', {
   assert.equal((await request('/api/auth/me', { token: reactivatedToken })).status, 401);
   const inactiveLogin = await request('/api/auth/login', {
     method: 'POST',
-    body: { email: sales.email, password: 'Integration-pass-123' }
+    body: { email: sales.email, password: 'Updated-password-123' }
   });
   assert.equal(inactiveLogin.status, 401);
   assert.equal((await inactiveLogin.json()).message, 'Invalid email or password');
@@ -198,7 +273,7 @@ test('authentication and account-management API integration', {
   })).status, 200);
   assert.equal((await request('/api/auth/login', {
     method: 'POST',
-    body: { email: sales.email, password: 'Integration-pass-123' }
+    body: { email: sales.email, password: 'Updated-password-123' }
   })).status, 200);
 
   assert.equal((await request(`/api/users/${admin.id}`, {
