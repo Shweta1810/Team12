@@ -1,3 +1,4 @@
+
 const mongoose = require("mongoose");
 
 const customerSchema = new mongoose.Schema(
@@ -18,20 +19,10 @@ const customerSchema = new mongoose.Schema(
     phone: {
       type: String,
       trim: true,
-    },
-
-    // Where the customer came from (CRM-F-022)
-    source: {
-      type: String,
-      enum: [
-        "Website",
-        "Social Media",
-        "Referral",
-        "Advertisement",
-        "Campaign",
-        "Other",
-      ],
-      default: "Other",
+      validate: {
+        validator: (value) => !value || /^\d{10}$/.test(value),
+        message: "Phone number must contain exactly 10 digits.",
+      },
     },
 
     status: {
@@ -56,9 +47,7 @@ const customerSchema = new mongoose.Schema(
   }
 );
 
-const Customer = mongoose.model(
-  "Customer",
-  customerSchema
-);
+const Customer = mongoose.model("Customer", customerSchema);
 
 module.exports = Customer;
+
