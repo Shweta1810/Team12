@@ -484,8 +484,6 @@ The backend requires `JWT_SECRET` to be at least 32 characters long. Set a stron
 
 **Team 12** — Customer Relationship Management System
 
-Add or update contributor names and individual responsibilities here before the final project submission.
-
 ---
 
 ## Disclaimer
